@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>
+    <%= title %>
+  </title>
+
+  <!-- cytoscapeの読込み-->
+  <script src="/js/jquery-1.10.1.min.js"></script>
+  <script src="/js/cytoscape.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/stylesheets/css/style.css" media="all">
+
+  <!-- qtipの読込み -->
+  <link rel="stylesheet" type="text/css" href="/stylesheets/css/jquery.qtip.min.css" media="all">
+  <script src="/js/cytoscape-qtip.js"></script>
+  <script src="/js/jquery.qtip.min.js"></script>
+
+</head>
+
+<body>
+  <!-- ↓改行やｽﾍﾟｰｽを入れない-->
+  <div id="errorJob"><%= errorJob%></div>
+  <div id="recoveryTime"></div>
+  <div id="cy"></div>
+  <script>
+    var JobID = document.getElementById('errorJob').textContent
+    var cy = cytoscape({
+      container: document.getElementById('cy'),
+      style: cytoscape.stylesheet()
+        .selector('node')
+        .css({
+          'id': 'data(id)',
+          'shape': 'data(faveShape)',
+          'width': 'mapData(weight, 40, 80, 20, 60)',
+          'height': 'mapData(weight, 40, 80, 20, 60)',
+          'content': 'data(name)',
+          'text-outline-color': 'data(faveColor)',
+          'background-color': 'data(faveColor)',
+          'color': 'data(faveColor)',
+        })
+        .selector('edge')
+        .css({
+          'curve-style': 'bezier',
+          'target-arrow-shape': 'triangle',
+          'width': 3,
+          'line-color': '#ddd',
+          'target-arrow-color': '#ddd'
+        })
+        .selector('.highlighted')
+        .css({
+          'background-color': '#61bffc',
+          'line-color': '#61bffc',
+          'target-arrow-color': '#61bffc',
+          'transition-property': 'background-color, line-color, target-arrow-color',
+          'transition-duration': '0.1s'
+        }),
+    })
+
+    $.getJSON("/result", {
+      JobID
+    }, function (elm) {
+      new Promise(function (resulve, reject) {
+        for (no in elm) {
+          cy.add({
+            group: elm[no].group,
+            data:elm[no].data
+          })
+        }
+        resulve()
+        // when adding node and relation is finished, draw graph
+      }).then(function () {
+        // just use the regular qtip api but on cy elements
+        cy.nodes().qtip({
+          content: function () {
+            return 'JobName:' + this.data('name') +
+              '\n' + 'Cycle:' + this.data('cycle') +
+              '\n' + 'OperatingTime:' + this.data('operatingTime') +
+              '\n' + 'Comment:' + this.data('comment')
+          },
+          position: {
+            my: 'top center',
+            at: 'bottom center'
+          },
+          style: {
+            classes: 'qtip-bootstrap',
+            width: '400px',
+            tip: {
+              width: 40,
+              height: 8
+            }
+          }
+        })
+      })
+      //draw graph
+      cy.layout({
+        name: 'breadthfirst',
+        circle: false,
+        fit: true,
+        directed: true,
+        padding: 10
+      }).run()
+
+      //when node is clicked, show recovery time
+      cy.on('click', 'node', function (evt) {
+        var endJobID = this.data('name')
+        var jobInfo = [JobID, endJobID]
+        $.getJSON("/result/showTotalTime", {
+          jobInfo
+        }, function (resPath) {
+          var recoveryTime = document.getElementById('recoveryTime')
+          recoveryTime.textContent = endJobID + 'までのリカバリ時間は' + resPath[0] + '分です'
+
+          //visualize the longest path to disignated node
+          for (var j = 1; j < resPath.length; j++) {
+            cy.filter(function (element, i) {
+              if (element.isEdge() && element.data('id') == (resPath[j].id + 10000)) {
+                return true;
+              }
+              return false;
+            }).addClass('highlighted')
+          }
+        })
+      })
+    })
+  </script>
+</body>
+
+</html>
